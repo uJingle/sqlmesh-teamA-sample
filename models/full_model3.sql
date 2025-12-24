@@ -1,5 +1,5 @@
 MODEL (
-  name sqlmesh_a.full_model2,
+  name sqlmesh_a.full_model3,
   kind FULL,
   cron '@daily',
   grain item_id,
@@ -8,7 +8,7 @@ MODEL (
 
 SELECT
   item_id,
-  COUNT(id) AS orders_total,
+  COUNT(DISTINCT id) AS num_orders,
 FROM
   sqlmesh_a.incremental_model
 GROUP BY item_id
