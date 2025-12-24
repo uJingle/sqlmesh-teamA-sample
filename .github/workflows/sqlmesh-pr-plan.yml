@@ -4,7 +4,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'sqlmesh-teamA/**'
+      - 'models/**'
+      - 'seeds/**'
+      - 'macros/**'
+      - 'audits/**'
+      - 'tests/**'
+      - 'config.yaml'
 
 jobs:
   plan:
@@ -30,7 +35,6 @@ jobs:
 
       - name: Run SQLMesh Plan (Dev)
         id: plan-dev
-        working-directory: sqlmesh-teamA
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
@@ -48,7 +52,6 @@ jobs:
 
       - name: Run SQLMesh Plan (Prod)
         id: plan-prod
-        working-directory: sqlmesh-teamA
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}

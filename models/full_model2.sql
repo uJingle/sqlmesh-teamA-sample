@@ -1,5 +1,5 @@
 MODEL (
-  name sqlmesh_a.full_model,
+  name sqlmesh_a.full_model2,
   kind FULL,
   cron '@daily',
   grain item_id,

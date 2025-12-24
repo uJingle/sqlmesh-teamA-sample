@@ -5,7 +5,12 @@ on:
     branches:
       - main
     paths:
-      - 'sqlmesh-teamA/**'
+      - 'models/**'
+      - 'seeds/**'
+      - 'macros/**'
+      - 'audits/**'
+      - 'tests/**'
+      - 'config.yaml'
 
 jobs:
   apply:
@@ -29,7 +34,6 @@ jobs:
           pip install sqlmesh[trino]
 
       - name: Apply SQLMesh (Dev)
-        working-directory: sqlmesh-teamA
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
@@ -43,7 +47,6 @@ jobs:
           sqlmesh apply team_a_dev
 
       - name: Apply SQLMesh (Prod)
-        working-directory: sqlmesh-teamA
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
