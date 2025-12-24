@@ -29,15 +29,15 @@ jobs:
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
 
-      - name: Get Changed Files and Summary
+      - name: Get Changed Files and Code Diffs
         id: get-changes
         run: |
           # Get base and head SHA
           BASE_SHA=${{ github.event.pull_request.base.sha }}
           HEAD_SHA=${{ github.event.pull_request.head.sha }}
           
-          # Get changed files
-          CHANGED_FILES=$(git diff --name-status $BASE_SHA $HEAD_SHA | grep -E '\.(sql|yaml|yml|py)$' || echo "")
+          # Get changed files in specific directories only
+          CHANGED_FILES=$(git diff --name-status $BASE_SHA $HEAD_SHA | grep -E '^(audits|logs|macros|models|seeds|tests)/.*\.(sql|yaml|yml|py)$' || echo "")
           
           # Initialize counters
           MODELS_CHANGED=0
@@ -45,57 +45,71 @@ jobs:
           MACROS_CHANGED=0
           AUDITS_CHANGED=0
           TESTS_CHANGED=0
-          CONFIG_CHANGED=0
-          FILE_LIST=""
+          LOGS_CHANGED=0
           
-          # Count changes using wc -l (more reliable)
+          # Count changes
           if [ -n "$CHANGED_FILES" ]; then
-            MODELS_COUNT=$(echo "$CHANGED_FILES" | grep "models/" | wc -l)
-            SEEDS_COUNT=$(echo "$CHANGED_FILES" | grep "seeds/" | wc -l)
-            MACROS_COUNT=$(echo "$CHANGED_FILES" | grep "macros/" | wc -l)
-            AUDITS_COUNT=$(echo "$CHANGED_FILES" | grep "audits/" | wc -l)
-            TESTS_COUNT=$(echo "$CHANGED_FILES" | grep "tests/" | wc -l)
-            CONFIG_COUNT=$(echo "$CHANGED_FILES" | grep "config.yaml" | wc -l)
+            MODELS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*models/" | wc -l)
+            SEEDS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*seeds/" | wc -l)
+            MACROS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*macros/" | wc -l)
+            AUDITS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*audits/" | wc -l)
+            TESTS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*tests/" | wc -l)
+            LOGS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*logs/" | wc -l)
             
-            # Convert to numbers (remove leading spaces)
             MODELS_CHANGED=$((MODELS_COUNT))
             SEEDS_CHANGED=$((SEEDS_COUNT))
             MACROS_CHANGED=$((MACROS_COUNT))
             AUDITS_CHANGED=$((AUDITS_COUNT))
             TESTS_CHANGED=$((TESTS_COUNT))
-            CONFIG_CHANGED=$((CONFIG_COUNT))
-            
-            # Get file list
-            FILE_LIST=$(echo "$CHANGED_FILES" | awk '{print $2}' | grep -E '\.(sql|yaml|yml|py)$' || echo "")
+            LOGS_CHANGED=$((LOGS_COUNT))
           fi
           
-          # Save to output - use simple format for numbers, multiline for file list
+          # Get file list and generate diffs
+          FILE_DIFFS=""
+          if [ -n "$CHANGED_FILES" ]; then
+            while IFS= read -r line; do
+              if [ -z "$line" ]; then
+                continue
+              fi
+              
+              STATUS=$(echo "$line" | awk '{print $1}')
+              FILE_PATH=$(echo "$line" | awk '{print $2}')
+              
+              if [ -n "$FILE_PATH" ]; then
+                # Get diff for this file
+                FULL_DIFF=$(git diff $BASE_SHA $HEAD_SHA -- "$FILE_PATH" 2>/dev/null || echo "")
+                
+                if [ -n "$FULL_DIFF" ]; then
+                  # Count lines
+                  LINE_COUNT=$(echo "$FULL_DIFF" | wc -l | tr -d ' ')
+                  
+                  # Limit to 50 lines
+                  if [ "$LINE_COUNT" -gt 50 ]; then
+                    FILE_DIFF=$(echo "$FULL_DIFF" | head -n 50)
+                    TRUNCATE_MSG="... (truncated, total ${LINE_COUNT} lines)"
+                    FILE_DIFF="${FILE_DIFF}"$'\n'"${TRUNCATE_MSG}"
+                  else
+                    FILE_DIFF="$FULL_DIFF"
+                  fi
+                  
+                  # Add to output with delimiter
+                  FILE_DIFFS="${FILE_DIFFS}FILE_START:${FILE_PATH}"$'\n'"${FILE_DIFF}"$'\n'"FILE_END:${FILE_PATH}"$'\n'
+                fi
+              fi
+            done <<< "$CHANGED_FILES"
+          fi
+          
+          # Save to output
           echo "models_changed=${MODELS_CHANGED}" >> $GITHUB_OUTPUT
           echo "seeds_changed=${SEEDS_CHANGED}" >> $GITHUB_OUTPUT
           echo "macros_changed=${MACROS_CHANGED}" >> $GITHUB_OUTPUT
           echo "audits_changed=${AUDITS_CHANGED}" >> $GITHUB_OUTPUT
           echo "tests_changed=${TESTS_CHANGED}" >> $GITHUB_OUTPUT
-          echo "config_changed=${CONFIG_CHANGED}" >> $GITHUB_OUTPUT
-          
-          # Use multiline format only for file list
-          {
-            echo "changed_files<<EOF"
-            echo "$FILE_LIST"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
-
-      - name: Get Code Diff Summary
-        id: get-diff
-        run: |
-          BASE_SHA=${{ github.event.pull_request.base.sha }}
-          HEAD_SHA=${{ github.event.pull_request.head.sha }}
-          
-          # Get summary of changes (first 50 lines of diff)
-          DIFF_SUMMARY=$(git diff $BASE_SHA $HEAD_SHA --stat || echo "")
+          echo "logs_changed=${LOGS_CHANGED}" >> $GITHUB_OUTPUT
           
           {
-            echo "diff_summary<<EOF"
-            echo "$DIFF_SUMMARY"
+            echo "file_diffs<<EOF"
+            echo -n "$FILE_DIFFS"
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
@@ -104,45 +118,92 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const changedFiles = `${{ steps.get-changes.outputs.changed_files }}`.trim();
-            const modelsChanged = `${{ steps.get-changes.outputs.models_changed }}`;
-            const seedsChanged = `${{ steps.get-changes.outputs.seeds_changed }}`;
-            const macrosChanged = `${{ steps.get-changes.outputs.macros_changed }}`;
-            const auditsChanged = `${{ steps.get-changes.outputs.audits_changed }}`;
-            const testsChanged = `${{ steps.get-changes.outputs.tests_changed }}`;
-            const configChanged = `${{ steps.get-changes.outputs.config_changed }}`;
-            const diffSummary = `${{ steps.get-diff.outputs.diff_summary }}`.trim();
+            const modelsChanged = parseInt(`${{ steps.get-changes.outputs.models_changed }}`) || 0;
+            const seedsChanged = parseInt(`${{ steps.get-changes.outputs.seeds_changed }}`) || 0;
+            const macrosChanged = parseInt(`${{ steps.get-changes.outputs.macros_changed }}`) || 0;
+            const auditsChanged = parseInt(`${{ steps.get-changes.outputs.audits_changed }}`) || 0;
+            const testsChanged = parseInt(`${{ steps.get-changes.outputs.tests_changed }}`) || 0;
+            const logsChanged = parseInt(`${{ steps.get-changes.outputs.logs_changed }}`) || 0;
+            const fileDiffs = `${{ steps.get-changes.outputs.file_diffs }}`.trim();
             
-            let comment = '## 📋 SQLMesh Changes Summary for Team A\n\n';
+            // Calculate total changes
+            const totalChanges = modelsChanged + seedsChanged + macrosChanged + auditsChanged + testsChanged + logsChanged;
             
-            // Summary statistics
-            comment += '### 📊 Change Statistics\n\n';
-            comment += '| Type | Count |\n';
-            comment += '|------|-------|\n';
-            if (modelsChanged !== '0') comment += `| 📦 Models | ${modelsChanged} |\n`;
-            if (seedsChanged !== '0') comment += `| 🌱 Seeds | ${seedsChanged} |\n`;
-            if (macrosChanged !== '0') comment += `| 🔧 Macros | ${macrosChanged} |\n`;
-            if (auditsChanged !== '0') comment += `| ✅ Audits | ${auditsChanged} |\n`;
-            if (testsChanged !== '0') comment += `| 🧪 Tests | ${testsChanged} |\n`;
-            if (configChanged !== '0') comment += `| ⚙️ Config | ${configChanged} |\n`;
-            comment += '\n';
+            // Generate summary text
+            let summaryText = '이 PR은 SQLMesh 프로젝트의 변경사항을 포함합니다. ';
+            const changes = [];
+            if (modelsChanged > 0) changes.push(`${modelsChanged}개의 모델`);
+            if (seedsChanged > 0) changes.push(`${seedsChanged}개의 시드`);
+            if (macrosChanged > 0) changes.push(`${macrosChanged}개의 매크로`);
+            if (auditsChanged > 0) changes.push(`${auditsChanged}개의 감사`);
+            if (testsChanged > 0) changes.push(`${testsChanged}개의 테스트`);
+            if (logsChanged > 0) changes.push(`${logsChanged}개의 로그`);
             
-            // Changed files list
-            if (changedFiles) {
-              const files = changedFiles.split('\n').filter(f => f.trim());
-              if (files.length > 0) {
-                comment += '### 📝 Changed Files\n\n';
-                files.forEach(file => {
-                  comment += `- \`${file}\`\n`;
-                });
-                comment += '\n';
-              }
+            if (changes.length > 0) {
+              summaryText += changes.join(', ') + ' 파일이 변경되었습니다.';
+            } else {
+              summaryText += '변경된 파일이 없습니다.';
             }
             
-            // Diff summary
-            if (diffSummary) {
-              comment += '### 📈 Change Summary\n\n';
-              comment += '```\n' + diffSummary + '\n```\n';
+            let comment = '## 📋 SQLMesh Changes Summary for Team A\n\n';
+            comment += summaryText + '\n\n';
+            
+            // Organize by directory
+            const diffsByDir = {
+              'models': [],
+              'seeds': [],
+              'macros': [],
+              'audits': [],
+              'tests': [],
+              'logs': []
+            };
+            
+            if (fileDiffs) {
+              const fileBlocks = fileDiffs.split('FILE_START:');
+              fileBlocks.forEach(block => {
+                if (!block.trim()) return;
+                const lines = block.split('\n');
+                const filePath = lines[0].trim();
+                const diffContent = lines.slice(1).join('\n').replace(/FILE_END:.*$/m, '').trim();
+                
+                if (filePath.startsWith('models/')) {
+                  diffsByDir.models.push({ path: filePath, diff: diffContent });
+                } else if (filePath.startsWith('seeds/')) {
+                  diffsByDir.seeds.push({ path: filePath, diff: diffContent });
+                } else if (filePath.startsWith('macros/')) {
+                  diffsByDir.macros.push({ path: filePath, diff: diffContent });
+                } else if (filePath.startsWith('audits/')) {
+                  diffsByDir.audits.push({ path: filePath, diff: diffContent });
+                } else if (filePath.startsWith('tests/')) {
+                  diffsByDir.tests.push({ path: filePath, diff: diffContent });
+                } else if (filePath.startsWith('logs/')) {
+                  diffsByDir.logs.push({ path: filePath, diff: diffContent });
+                }
+              });
+            }
+            
+            // Display by directory
+            const dirLabels = {
+              'models': '📦 Models',
+              'seeds': '🌱 Seeds',
+              'macros': '🔧 Macros',
+              'audits': '✅ Audits',
+              'tests': '🧪 Tests',
+              'logs': '📋 Logs'
+            };
+            
+            Object.keys(diffsByDir).forEach(dir => {
+              if (diffsByDir[dir].length > 0) {
+                comment += `### ${dirLabels[dir]}\n\n`;
+                diffsByDir[dir].forEach(({ path, diff }) => {
+                  comment += `#### \`${path}\`\n\n`;
+                  comment += '```diff\n' + diff + '\n```\n\n';
+                });
+              }
+            });
+            
+            if (totalChanges === 0) {
+              comment += '변경된 파일이 없습니다.\n';
             }
             
             // Find existing comment
