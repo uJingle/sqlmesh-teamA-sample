@@ -1,0 +1,116 @@
+name: SQLMesh PR Plan - Team A
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'sqlmesh-teamA/**'
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SQLMesh
+        run: |
+          pip install sqlmesh[trino]
+
+      - name: Run SQLMesh Plan (Dev)
+        id: plan-dev
+        working-directory: sqlmesh-teamA
+        env:
+          SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__USER: ${{ secrets.TRINO_USER || 'admin' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__USER: ${{ secrets.POSTGRES_USER || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
+        run: |
+          sqlmesh plan team_a_dev --no-apply > plan-dev-output.txt 2>&1 || true
+          echo "plan_dev_output<<EOF" >> $GITHUB_OUTPUT
+          cat plan-dev-output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Run SQLMesh Plan (Prod)
+        id: plan-prod
+        working-directory: sqlmesh-teamA
+        env:
+          SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__USER: ${{ secrets.TRINO_USER || 'admin' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__USER: ${{ secrets.POSTGRES_USER || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
+        run: |
+          sqlmesh plan team_a_prod --no-apply > plan-prod-output.txt 2>&1 || true
+          echo "plan_prod_output<<EOF" >> $GITHUB_OUTPUT
+          cat plan-prod-output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment PR with Plan Results
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const planDevOutput = `${{ steps.plan-dev.outputs.plan_dev_output }}`;
+            const planProdOutput = `${{ steps.plan-prod.outputs.plan_prod_output }}`;
+            
+            let comment = `## 🔍 SQLMesh Plan Results for Team A\n\n`;
+            
+            if (planDevOutput) {
+              comment += `### 📊 Dev Environment (team_a_dev)\n\n`;
+              comment += `\`\`\`\n${planDevOutput}\n\`\`\`\n\n`;
+            }
+            
+            if (planProdOutput) {
+              comment += `### 🚀 Prod Environment (team_a_prod)\n\n`;
+              comment += `\`\`\`\n${planProdOutput}\n\`\`\`\n\n`;
+            }
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('SQLMesh Plan Results for Team A')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+

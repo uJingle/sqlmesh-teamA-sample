@@ -1,0 +1,58 @@
+name: SQLMesh Apply - Team A
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sqlmesh-teamA/**'
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install SQLMesh
+        run: |
+          pip install sqlmesh[trino]
+
+      - name: Apply SQLMesh (Dev)
+        working-directory: sqlmesh-teamA
+        env:
+          SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__USER: ${{ secrets.TRINO_USER || 'admin' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__USER: ${{ secrets.POSTGRES_USER || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
+        run: |
+          sqlmesh apply team_a_dev
+
+      - name: Apply SQLMesh (Prod)
+        working-directory: sqlmesh-teamA
+        env:
+          SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
+          SQLMESH_GATEWAY__TRINO__CONNECTION__USER: ${{ secrets.TRINO_USER || 'admin' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__USER: ${{ secrets.POSTGRES_USER || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
+          SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
+        run: |
+          sqlmesh apply team_a_prod
+
