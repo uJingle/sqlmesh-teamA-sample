@@ -31,7 +31,7 @@ jobs:
 
       - name: Install SQLMesh
         run: |
-          pip install sqlmesh[trino]
+          pip3 install sqlmesh[trino]
 
       - name: Apply SQLMesh (Dev)
         env:
