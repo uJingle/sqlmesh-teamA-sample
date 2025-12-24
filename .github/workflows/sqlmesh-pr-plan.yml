@@ -37,7 +37,12 @@ jobs:
           HEAD_SHA=${{ github.event.pull_request.head.sha }}
           
           # Get changed files in specific directories only
-          CHANGED_FILES=$(git diff --name-status $BASE_SHA $HEAD_SHA | grep -E '^(audits|logs|macros|models|seeds|tests)/.*\.(sql|yaml|yml|py)$' || echo "")
+          # git diff --name-status output format: "A    path/to/file" or "M    path/to/file"
+          CHANGED_FILES=$(git diff --name-status $BASE_SHA $HEAD_SHA | grep -E '^[AMD]\s+(audits|logs|macros|models|seeds|tests)/.*\.(sql|yaml|yml|py)$' || echo "")
+          
+          # Debug: print changed files
+          echo "Changed files found:"
+          echo "$CHANGED_FILES"
           
           # Initialize counters
           MODELS_CHANGED=0
@@ -49,12 +54,12 @@ jobs:
           
           # Count changes
           if [ -n "$CHANGED_FILES" ]; then
-            MODELS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*models/" | wc -l)
-            SEEDS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*seeds/" | wc -l)
-            MACROS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*macros/" | wc -l)
-            AUDITS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*audits/" | wc -l)
-            TESTS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*tests/" | wc -l)
-            LOGS_COUNT=$(echo "$CHANGED_FILES" | grep "^[AMD].*logs/" | wc -l)
+            MODELS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+models/' | wc -l | tr -d ' ')
+            SEEDS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+seeds/' | wc -l | tr -d ' ')
+            MACROS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+macros/' | wc -l | tr -d ' ')
+            AUDITS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+audits/' | wc -l | tr -d ' ')
+            TESTS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+tests/' | wc -l | tr -d ' ')
+            LOGS_COUNT=$(echo "$CHANGED_FILES" | grep -E '\s+logs/' | wc -l | tr -d ' ')
             
             MODELS_CHANGED=$((MODELS_COUNT))
             SEEDS_CHANGED=$((SEEDS_COUNT))
@@ -72,10 +77,12 @@ jobs:
                 continue
               fi
               
+              # Extract status and file path (handle both tab and space separators)
               STATUS=$(echo "$line" | awk '{print $1}')
-              FILE_PATH=$(echo "$line" | awk '{print $2}')
+              # Remove status and leading whitespace to get file path
+              FILE_PATH=$(echo "$line" | sed 's/^[AMD][[:space:]]*//' | sed 's/^[[:space:]]*//')
               
-              if [ -n "$FILE_PATH" ]; then
+              if [ -n "$FILE_PATH" ] && [ "$FILE_PATH" != "$STATUS" ]; then
                 # Get diff for this file
                 FULL_DIFF=$(git diff $BASE_SHA $HEAD_SHA -- "$FILE_PATH" 2>/dev/null || echo "")
                 
@@ -129,24 +136,44 @@ jobs:
             // Calculate total changes
             const totalChanges = modelsChanged + seedsChanged + macrosChanged + auditsChanged + testsChanged + logsChanged;
             
-            // Generate summary text
-            let summaryText = '이 PR은 SQLMesh 프로젝트의 변경사항을 포함합니다. ';
-            const changes = [];
-            if (modelsChanged > 0) changes.push(`${modelsChanged}개의 모델`);
-            if (seedsChanged > 0) changes.push(`${seedsChanged}개의 시드`);
-            if (macrosChanged > 0) changes.push(`${macrosChanged}개의 매크로`);
-            if (auditsChanged > 0) changes.push(`${auditsChanged}개의 감사`);
-            if (testsChanged > 0) changes.push(`${testsChanged}개의 테스트`);
-            if (logsChanged > 0) changes.push(`${logsChanged}개의 로그`);
+            // Directory labels (same format as used below)
+            const dirLabels = {
+              'models': '📦 Models',
+              'seeds': '🌱 Seeds',
+              'macros': '🔧 Macros',
+              'audits': '✅ Audits',
+              'tests': '🧪 Tests',
+              'logs': '📋 Logs'
+            };
             
-            if (changes.length > 0) {
-              summaryText += changes.join(', ') + ' 파일이 변경되었습니다.';
-            } else {
-              summaryText += '변경된 파일이 없습니다.';
-            }
+            // Directory counts
+            const dirCounts = {
+              'models': modelsChanged,
+              'seeds': seedsChanged,
+              'macros': macrosChanged,
+              'audits': auditsChanged,
+              'tests': testsChanged,
+              'logs': logsChanged
+            };
             
             let comment = '## 📋 SQLMesh Changes Summary for Team A\n\n';
-            comment += summaryText + '\n\n';
+            
+            // Generate summary table
+            comment += '### 변경사항\n\n';
+            
+            if (totalChanges > 0) {
+              comment += '| 타입 | 개수 |\n';
+              comment += '|------|------|\n';
+              Object.keys(dirLabels).forEach(dir => {
+                if (dirCounts[dir] > 0) {
+                  comment += `| ${dirLabels[dir]} | ${dirCounts[dir]} |\n`;
+                }
+              });
+            } else {
+              comment += '**변경된 파일이 없습니다.**\n';
+            }
+            
+            comment += '\n';
             
             // Organize by directory
             const diffsByDir = {
@@ -183,15 +210,6 @@ jobs:
             }
             
             // Display by directory
-            const dirLabels = {
-              'models': '📦 Models',
-              'seeds': '🌱 Seeds',
-              'macros': '🔧 Macros',
-              'audits': '✅ Audits',
-              'tests': '🧪 Tests',
-              'logs': '📋 Logs'
-            };
-            
             Object.keys(diffsByDir).forEach(dir => {
               if (diffsByDir[dir].length > 0) {
                 comment += `### ${dirLabels[dir]}\n\n`;
