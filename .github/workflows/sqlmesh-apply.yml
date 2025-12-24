@@ -5,7 +5,12 @@ on:
     branches:
       - main
     paths:
-      - 'sqlmesh-teamA/**'
+      - 'models/**'
+      - 'seeds/**'
+      - 'macros/**'
+      - 'audits/**'
+      - 'tests/**'
+      - 'config.yaml'
 
 jobs:
   apply:
@@ -26,10 +31,9 @@ jobs:
 
       - name: Install SQLMesh
         run: |
-          pip install sqlmesh[trino]
+          pip install sqlmesh[trino,postgres]
 
-      - name: Apply SQLMesh (Dev)
-        working-directory: sqlmesh-teamA
+      - name: Apply SQLMesh (Play)
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
@@ -40,10 +44,9 @@ jobs:
           SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
           SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
         run: |
-          sqlmesh apply team_a_dev
+          sqlmesh apply team_a_play
 
-      - name: Apply SQLMesh (Prod)
-        working-directory: sqlmesh-teamA
+      - name: Apply SQLMesh (Svc)
         env:
           SQLMESH_GATEWAY__TRINO__CONNECTION__HOST: ${{ secrets.TRINO_HOST || 'localhost' }}
           SQLMESH_GATEWAY__TRINO__CONNECTION__PORT: ${{ secrets.TRINO_PORT || '8060' }}
@@ -54,5 +57,5 @@ jobs:
           SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ngods' }}
           SQLMESH_GATEWAY__TRINO__STATE_CONNECTION__DATABASE: ${{ secrets.POSTGRES_DATABASE || 'sqlmesh_state' }}
         run: |
-          sqlmesh apply team_a_prod
+          sqlmesh apply team_a_svc
 
